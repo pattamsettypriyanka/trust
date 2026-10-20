@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny: Disallow all direct browser / client SDK access.
+    // All document operations, permissions, audit trails, and user management
+    // must strictly flow through the authenticated TrustVault Express API gateway.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Explicitly enforce deny on all core collections to prevent misconfigurations
+    match /documents/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /documentContents/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /documentGrants/{grantId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read, write: if false;
+    }
+
+    match /auditEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /auditHeads/{headId} {
+      allow read, write: if false;
+    }
+  }
+}

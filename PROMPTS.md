@@ -13,7 +13,7 @@ This log documents key AI prompts, architectural decisions, code generation eval
   2. *Correction*: Separated collections into `documents` (metadata only) and `documentContents` (binary field `content: Buffer` using `FieldValue` / Firestore `Bytes` SDK type). Enforced a strict raw byte size ceiling (e.g., 850,000 bytes raw limit to allow Firestore document encoding overhead well within 1,048,576 bytes).
 - **Review & Verification**: Verified Firestore Admin SDK `documentContents.set({ content: Buffer.from(...) })` behavior against Firestore limits. Ensured API endpoints never return content in `GET /api/documents` listings.
 - **Corrective Changes**: Designed explicit schemas in `server/src/types/index.ts` separating metadata from content. Configured multer in memory with 1,000,000 bytes hard cap.
-- **Commit**: `pending (initialization commit)`
+- **Commit**: `e07f8e0` (feat: complete TrustVault secure document sharing platform)
 
 ---
 
@@ -27,7 +27,7 @@ This log documents key AI prompts, architectural decisions, code generation eval
   3. *Race Condition*: Concurrent download vs revocation. If a revocation transaction writes to Firestore while a download request executes, a stale query could yield bytes.
 - **Review & Verification**: Tested authorization check against authoritative, real-time Firestore `documentGrants` collection. Made the authorization helper query `documentGrants` directly inside a transaction or fresh read before fetching bytes from `documentContents`.
 - **Corrective Changes**: Implemented `authorizeDocumentAccess({ documentId, user, requiredPermission })` in `server/src/services/authz.service.ts` that explicitly checks `documents/{id}` for owner, `documentGrants/{id_userId}` for active READ or EDIT grant, and strictly rejects ADMIN users unless they possess an explicit grant or are the owner.
-- **Commit**: `pending`
+- **Commit**: `e07f8e0`
 
 ---
 
@@ -44,7 +44,7 @@ This log documents key AI prompts, architectural decisions, code generation eval
   2. Used Firestore transactions on `auditHeads` to serialize audit chain updates atomically.
   3. Documented residual trust boundaries honestly in `THREATS.md` (tamper-evident against accidental deletion/unauthorized app mutations, but requires external timestamping/anchoring to protect against compromised backend admin credentials).
 - **Corrective Changes**: Built `server/src/services/audit.service.ts` with deterministic key sorting, transactional chain head progression, and validation endpoint `GET /api/admin/audit/integrity`.
-- **Commit**: `pending`
+- **Commit**: `e07f8e0`
 
 ---
 
@@ -58,7 +58,7 @@ This log documents key AI prompts, architectural decisions, code generation eval
   3. *Defect*: Serving downloads with ambiguous MIME types allows browser content-sniffing (MIME confusion / XSS).
 - **Review & Verification**: Verified magic numbers (PDF `%PDF`, PNG `\x89PNG\r\n\x1a\n`, JPEG `\xFF\xD8\xFF`, Text UTF-8/ASCII verification). Added explicit multer error interceptor converting `LIMIT_FILE_SIZE` into HTTP 413. Set `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment; filename="..."` on all download routes.
 - **Corrective Changes**: Implemented `server/src/utils/fileValidation.ts` with signature checks for PDF, PNG, JPEG, TXT; rejected all HTML/SVG/executables.
-- **Commit**: `pending`
+- **Commit**: `e07f8e0`
 
 ---
 
@@ -71,7 +71,7 @@ This log documents key AI prompts, architectural decisions, code generation eval
   2. *Defect*: Mutation testing was omitted or only described theoretically.
 - **Review & Verification**: Built a complete negative security test suite in `server/src/tests/security.test.ts`. Built an explicit mutation test suite in `server/src/tests/mutation.test.ts` where the core authorization guard is systematically toggled to demonstrate test failure when authorization is bypassed.
 - **Corrective Changes**: Implemented comprehensive automated test suites and verified that all tests pass when guards are present, and fail when bypassed.
-- **Commit**: `pending`
+- **Commit**: `e07f8e0`
 
 ---
 
@@ -84,5 +84,5 @@ This log documents key AI prompts, architectural decisions, code generation eval
   2. *Defect*: Windows OneDrive locks files in root `node_modules` during hoisting symlink resolution, causing `EPERM` / `TAR_ENTRY_ERROR` and hanging installs.
 - **Review & Verification**: Removed the client-side `firebase` package dependency from `client/package.json`. Separated root workspaces into decoupled subpackages with root orchestrator scripts (`npm --prefix server run ...`).
 - **Corrective Changes**: Updated `client/package.json` to keep only React 19, Lucide icons, Tailwind, and Vite. Updated root `package.json` to manage independent package runs cleanly.
-- **Commit**: `pending`
+- **Commit**: `e07f8e0`
 

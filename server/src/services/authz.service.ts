@@ -85,16 +85,25 @@ export class AuthorizationService {
           isOwner: false
         };
       }
+      if (operation === 'MANAGE_GRANTS') {
+        return {
+          authorized: true,
+          statusCode: 200,
+          reason: 'Authorized as administrator for access control governance',
+          document,
+          isOwner: false
+        };
+      }
       // For all other operations, admin must have an explicit grant just like any other user
     }
 
     // 3. For operations restricted ONLY to owners:
-    // Only the owner can manage grants (grant/revoke) or delete/restore the document
+    // Only the owner can delete/restore the document, or non-admins managing grants
     if (operation === 'MANAGE_GRANTS' || operation === 'DELETE' || operation === 'RESTORE') {
       return {
         authorized: false,
         statusCode: 403,
-        reason: 'Only the document owner can manage permissions or delete this document',
+        reason: 'Only the document owner or an administrator can manage permissions or delete this document',
         document,
         isOwner: false
       };

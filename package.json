@@ -2,17 +2,37 @@
   "name": "trustvault",
   "version": "1.0.0",
   "description": "TrustVault - Secure Document Sharing Platform",
-  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
-    "build": "npm --prefix server run build && npm --prefix client run build",
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix server run build && npm --prefix client run build",
+    "vercel-build": "npm --prefix server install && npm --prefix client install && npm --prefix server run build && npm --prefix client run build",
     "test": "npm --prefix server run test",
     "test:coverage": "npm --prefix server run test:coverage",
-    "seed": "npm --prefix server run seed"
+    "seed": "npm --prefix server run seed",
+    "firebase": "firebase",
+    "emulators": "firebase emulators:start"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.1.0",
+    "helmet": "^8.0.0",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "firebase-tools": "^15.34.1",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
   }
 }

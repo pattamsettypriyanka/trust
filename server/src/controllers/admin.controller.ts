@@ -15,8 +15,26 @@ export class AdminController {
   static async listUsers(req: Request, res: Response): Promise<void> {
     try {
       const db = getFirestoreDb();
-      const snapshot = await db.collection('users').get();
-      const users: UserProfile[] = snapshot.docs.map((doc: any) => doc.data() as UserProfile);
+      const [usersSnap, grantsSnap] = await Promise.all([
+        db.collection('users').get(),
+        db.collection('documentGrants').get()
+      ]);
+
+      const grantCounts: Record<string, number> = {};
+      for (const gDoc of grantsSnap.docs) {
+        const g = gDoc.data();
+        if (g.userId) {
+          grantCounts[g.userId] = (grantCounts[g.userId] || 0) + 1;
+        }
+      }
+
+      const users: Array<UserProfile & { sharedDocumentsCount: number }> = usersSnap.docs.map((doc: any) => {
+        const u = doc.data() as UserProfile;
+        return {
+          ...u,
+          sharedDocumentsCount: grantCounts[u.id] || 0
+        };
+      });
 
       // Sort by createdAt desc
       users.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -239,6 +257,239 @@ export class AdminController {
       res.status(500).json({
         type: 'https://trustvault.internal/errors/internal-error',
         title: 'Error Aggregating Stats',
+        status: 500,
+        detail: (err as Error).message
+      });
+    }
+  }
+
+  /**
+   * Retrieves full details for a specific user: profile, grants, and owned documents.
+   */
+  static async getUserDetails(req: Request, res: Response): Promise<void> {
+    const targetUserId = req.params.userId;
+    try {
+      const db = getFirestoreDb();
+      const userSnap = await db.collection('users').doc(targetUserId).get();
+
+      if (!userSnap.exists) {
+        res.status(404).json({
+          type: 'https://trustvault.internal/errors/not-found',
+          title: 'User Not Found',
+          status: 404,
+          detail: `User with ID ${targetUserId} does not exist.`
+        });
+        return;
+      }
+
+      const targetUser = userSnap.data() as UserProfile;
+
+      // 1. Fetch grants where userId === targetUserId
+      const grantsSnap = await db
+        .collection('documentGrants')
+        .where('userId', '==', targetUserId)
+        .get();
+
+      const grants = [];
+      for (const gDoc of grantsSnap.docs) {
+        const grant = gDoc.data();
+        const docSnap = await db.collection('documents').doc(grant.documentId).get();
+        const docData = docSnap.exists ? docSnap.data() : null;
+        grants.push({
+          ...grant,
+          documentTitle: docData?.title || 'Unknown Document',
+          documentFilename: docData?.filename || 'unknown.bin',
+          documentCategory: docData?.category || 'GENERAL',
+          documentSize: docData?.size || 0,
+          documentOwnerEmail: docData?.ownerEmail || 'Unknown'
+        });
+      }
+
+      // 2. Fetch documents owned by this user
+      const ownedSnap = await db
+        .collection('documents')
+        .where('ownerId', '==', targetUserId)
+        .where('isDeleted', '==', false)
+        .get();
+
+      const ownedDocuments = ownedSnap.docs.map((d: any) => d.data());
+
+      res.json({
+        user: targetUser,
+        grants,
+        ownedDocuments
+      });
+    } catch (err) {
+      res.status(500).json({
+        type: 'https://trustvault.internal/errors/internal-error',
+        title: 'Error Loading User Details',
+        status: 500,
+        detail: (err as Error).message
+      });
+    }
+  }
+
+  /**
+   * Allows Admin to directly share a particular document with a specific user.
+   */
+  static async shareDocumentWithUser(req: Request, res: Response): Promise<void> {
+    const adminUser = req.user!;
+    const targetUserId = req.params.userId;
+    const { documentId, permission = 'READ' } = req.body;
+
+    if (!documentId) {
+      res.status(400).json({
+        type: 'https://trustvault.internal/errors/bad-request',
+        title: 'Missing Document ID',
+        status: 400,
+        detail: 'documentId is required in request body.'
+      });
+      return;
+    }
+
+    try {
+      const db = getFirestoreDb();
+      const [docSnap, targetUserSnap] = await Promise.all([
+        db.collection('documents').doc(documentId).get(),
+        db.collection('users').doc(targetUserId).get()
+      ]);
+
+      if (!docSnap.exists) {
+        res.status(404).json({
+          type: 'https://trustvault.internal/errors/not-found',
+          title: 'Document Not Found',
+          status: 404,
+          detail: `Document with ID ${documentId} does not exist.`
+        });
+        return;
+      }
+
+      if (!targetUserSnap.exists) {
+        res.status(404).json({
+          type: 'https://trustvault.internal/errors/not-found',
+          title: 'Target User Not Found',
+          status: 404,
+          detail: `Target user with ID ${targetUserId} does not exist.`
+        });
+        return;
+      }
+
+      const docData = docSnap.data();
+      const targetUser = targetUserSnap.data() as UserProfile;
+
+      if (docData.ownerId === targetUserId) {
+        res.status(400).json({
+          type: 'https://trustvault.internal/errors/bad-request',
+          title: 'Cannot Grant to Document Owner',
+          status: 400,
+          detail: 'User is already the owner of this document.'
+        });
+        return;
+      }
+
+      const grantId = `${documentId}_${targetUserId}`;
+      const now = new Date().toISOString();
+      const grant = {
+        id: grantId,
+        documentId,
+        userId: targetUserId,
+        userEmail: targetUser.email,
+        userName: targetUser.displayName,
+        permission,
+        grantedBy: adminUser.id,
+        grantedByEmail: adminUser.email,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      await db.collection('documentGrants').doc(grantId).set(grant);
+
+      // Audit event
+      await AuditService.logEvent({
+        actorId: adminUser.id,
+        actorEmail: adminUser.email,
+        actorRole: adminUser.role,
+        action: 'PERMISSION_GRANT',
+        documentId,
+        outcome: 'SUCCESS',
+        requestId: req.requestId,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        details: {
+          targetUserId,
+          targetUserEmail: targetUser.email,
+          permission,
+          documentTitle: docData.title,
+          source: 'ADMIN_CONSOLE'
+        }
+      });
+
+      res.status(201).json({
+        message: `Successfully granted ${permission} access on "${docData.title}" to ${targetUser.email}`,
+        grant
+      });
+    } catch (err) {
+      res.status(500).json({
+        type: 'https://trustvault.internal/errors/internal-error',
+        title: 'Error Granting Permission',
+        status: 500,
+        detail: (err as Error).message
+      });
+    }
+  }
+
+  /**
+   * Allows Admin to immediately revoke a user's access to a document.
+   */
+  static async revokeDocumentForUser(req: Request, res: Response): Promise<void> {
+    const adminUser = req.user!;
+    const { userId: targetUserId, documentId } = req.params;
+
+    try {
+      const db = getFirestoreDb();
+      const grantId = `${documentId}_${targetUserId}`;
+      const grantRef = db.collection('documentGrants').doc(grantId);
+      const grantSnap = await grantRef.get();
+
+      if (!grantSnap.exists) {
+        res.status(404).json({
+          type: 'https://trustvault.internal/errors/not-found',
+          title: 'Grant Not Found',
+          status: 404,
+          detail: 'No active grant exists for this user and document.'
+        });
+        return;
+      }
+
+      const grantData = grantSnap.data();
+      await grantRef.delete();
+
+      // Audit event
+      await AuditService.logEvent({
+        actorId: adminUser.id,
+        actorEmail: adminUser.email,
+        actorRole: adminUser.role,
+        action: 'PERMISSION_REVOKE',
+        documentId,
+        outcome: 'SUCCESS',
+        requestId: req.requestId,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        details: {
+          targetUserId,
+          targetUserEmail: grantData.userEmail,
+          revokedPermission: grantData.permission,
+          source: 'ADMIN_CONSOLE'
+        }
+      });
+
+      res.json({
+        message: `Successfully revoked access for ${grantData.userEmail} on document ${documentId}`
+      });
+    } catch (err) {
+      res.status(500).json({
+        type: 'https://trustvault.internal/errors/internal-error',
+        title: 'Error Revoking Permission',
         status: 500,
         detail: (err as Error).message
       });

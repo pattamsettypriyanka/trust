@@ -61,7 +61,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
         email = 'outsider@trustvault.local';
         displayName = 'Unrelated User';
       } else {
-        uid = `user_${devType}`;
+        uid = devType.startsWith('user_') ? devType : `user_${devType}`;
         email = `${devType}@trustvault.local`;
         displayName = `User ${devType}`;
       }

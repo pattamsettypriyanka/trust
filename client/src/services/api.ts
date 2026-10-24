@@ -200,8 +200,60 @@ export const api = {
   },
 
   // Admin
-  async listAdminUsers(): Promise<{ users: UserProfile[] }> {
+  async listAdminUsers(): Promise<{ users: Array<UserProfile & { sharedDocumentsCount?: number }> }> {
     return request('/admin/users');
+  },
+
+  async getAdminUserDetails(userId: string): Promise<{
+    user: UserProfile;
+    grants: Array<DocumentGrant & {
+      documentTitle: string;
+      documentFilename: string;
+      documentCategory: string;
+      documentSize: number;
+      documentOwnerEmail: string;
+    }>;
+    ownedDocuments: DocumentMetadata[];
+  }> {
+    return request(`/admin/users/${userId}/details`);
+  },
+
+  async adminShareDocumentWithUser(
+    userId: string,
+    documentId: string,
+    permission: 'READ' | 'EDIT' = 'READ'
+  ): Promise<{ message: string; grant: DocumentGrant }> {
+    return request(`/admin/users/${userId}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId, permission })
+    });
+  },
+
+  async adminRevokeDocumentForUser(userId: string, documentId: string): Promise<{ message: string }> {
+    return request(`/admin/users/${userId}/grants/${documentId}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async registerUser(email: string, displayName: string, password?: string): Promise<{
+    message: string;
+    user: UserProfile;
+    token: string;
+  }> {
+    return request('/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, displayName, password })
+    });
+  },
+
+  async updateMyProfile(displayName: string): Promise<{ user: UserProfile }> {
+    return request('/me/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName })
+    });
   },
 
   async updateAdminUserRole(userId: string, role: Role): Promise<void> {

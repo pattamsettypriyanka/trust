@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api.js';
 import { DocumentMetadata } from '../types.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
+import { useAuth } from '../context/AuthContext.js';
 import {
   FileText,
   Download,
@@ -24,6 +25,7 @@ import {
 export const DocumentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   const [document, setDocument] = useState<DocumentMetadata | null>(null);
   const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -202,7 +204,7 @@ export const DocumentDetailsPage: React.FC = () => {
               <span>Download File</span>
             </button>
 
-            {isOwner && (
+            {(isOwner || currentUser?.role === 'ADMIN') && (
               <button
                 onClick={() => navigate(`/documents/${document.id}/permissions`)}
                 className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"

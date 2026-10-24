@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile } from '../types.js';
 import { api, getStoredToken, setStoredToken, clearStoredToken } from '../services/api.js';
+import { auth } from '../firebase.js';
+import {
+  signInWithPopup,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut as firebaseSignOut
+} from 'firebase/auth';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -9,6 +18,9 @@ interface AuthContextType {
   error: string | null;
   loginWithToken: (token: string) => Promise<void>;
   switchDemoRole: (role: 'admin' | 'owner' | 'viewer') => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, displayName: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -51,7 +63,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTokenState(devToken);
   };
 
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      const credential = await signInWithPopup(auth, provider);
+      const idToken = await credential.user.getIdToken();
+      await loginWithToken(idToken);
+    } catch (err: any) {
+      console.error('[AuthContext] Google sign-in failed:', err);
+      const msg = err.code ? `${err.code}: ${err.message}` : (err as Error).message;
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithEmail = async (email: string, pass: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      try {
+        const credential = await signInWithEmailAndPassword(auth, email, pass);
+        const idToken = await credential.user.getIdToken();
+        await loginWithToken(idToken);
+      } catch (fbErr: any) {
+        console.warn('[AuthContext] Firebase sign-in failed, checking server auth:', fbErr.message);
+        throw fbErr;
+      }
+    } catch (err: any) {
+      console.error('[AuthContext] Email sign-in failed:', err);
+      const msg = err.code ? `${err.code}: ${err.message}` : (err as Error).message;
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const registerWithEmail = async (email: string, pass: string, displayName: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      try {
+        const credential = await createUserWithEmailAndPassword(auth, email, pass);
+        if (displayName) {
+          await updateProfile(credential.user, { displayName });
+        }
+        const idToken = await credential.user.getIdToken();
+        await loginWithToken(idToken);
+        if (displayName) {
+          await api.updateMyProfile(displayName).catch(() => {});
+        }
+      } catch (fbErr: any) {
+        // If Firebase Auth throws operation-not-allowed or similar, fall back to server registration
+        console.warn('[AuthContext] Firebase registration fallback to server:', fbErr.message);
+        const regRes = await api.registerUser(email, displayName, pass);
+        await loginWithToken(regRes.token);
+      }
+    } catch (err: any) {
+      console.error('[AuthContext] Registration failed:', err);
+      const msg = err.code ? `${err.code}: ${err.message}` : (err as Error).message;
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
+    try {
+      firebaseSignOut(auth).catch(() => {});
+    } catch {
+      // ignore
+    }
     clearStoredToken();
     setTokenState('');
     setUser(null);
@@ -70,6 +157,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error,
         loginWithToken,
         switchDemoRole,
+        loginWithGoogle,
+        loginWithEmail,
+        registerWithEmail,
         logout,
         refreshUser
       }}

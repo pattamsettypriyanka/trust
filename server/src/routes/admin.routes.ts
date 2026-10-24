@@ -11,7 +11,10 @@ router.use(requireRole(['ADMIN']));
 
 // User management
 router.get('/users', AdminController.listUsers);
+router.get('/users/:userId/details', AdminController.getUserDetails);
 router.patch('/users/:userId/role', sensitiveOpsRateLimiter, AdminController.updateUserRole);
+router.post('/users/:userId/share', sensitiveOpsRateLimiter, AdminController.shareDocumentWithUser);
+router.delete('/users/:userId/grants/:documentId', sensitiveOpsRateLimiter, AdminController.revokeDocumentForUser);
 
 // Compliance audit trail and integrity verification
 router.get('/audit', AdminController.listAuditEvents);

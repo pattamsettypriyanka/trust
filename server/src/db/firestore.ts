@@ -9,7 +9,7 @@ export function getFirestoreDb(): any {
   }
 
   const useMemory = process.env.FIRESTORE_MODE === 'memory';
-  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+  const emulatorHost = process.env.USE_EMULATOR !== 'false' ? process.env.FIRESTORE_EMULATOR_HOST : undefined;
 
   if (useMemory || (!emulatorHost && !process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.FIREBASE_CONFIG)) {
     // Return high-fidelity in-memory Firestore engine for tests and standalone local run
@@ -321,7 +321,7 @@ function cloneWithBuffers(obj: any): any {
   return obj;
 }
 
-function bufferReplacer(key: string, value: any) {
+function bufferReplacer(this: any, key: string, value: any) {
   if (this && Buffer.isBuffer(this[key])) {
     return { type: 'Buffer', data: Array.from(this[key]) };
   }
